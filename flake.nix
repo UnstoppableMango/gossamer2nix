@@ -40,6 +40,8 @@
             ];
           };
 
+          legacyPackages = import ./nix { inherit pkgs; };
+
           devShells.default = pkgs.mkShellNoCC {
             packages = with pkgs; [
               gnumake
