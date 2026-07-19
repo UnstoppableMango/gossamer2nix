@@ -11,7 +11,7 @@ See [GOALS.md](./GOALS.md) for scope.
 
 ## Background
 
-Gossamer is a Rust-flavored, Go-shaped-runtime language (source files use the `.gos` extension).
+Gossamer is a Rust-flavored, Go-shaped runtime language (source files use the `.gos` extension).
 Its `gos` toolchain has its own package manager (`gos add/remove/tidy/vendor/publish`, backed by an Ed25519-signed registry) and projects declare dependencies in a `project.toml` manifest.
 There's currently no way to build Gossamer projects reproducibly under Nix.
 
