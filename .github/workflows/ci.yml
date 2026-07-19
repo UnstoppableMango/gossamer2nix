@@ -21,4 +21,3 @@ jobs:
           name: unstoppablemango
 
       - run: nix flake check
-      - run: nix build .#
