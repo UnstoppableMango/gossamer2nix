@@ -32,6 +32,9 @@
 
       perSystem =
         { pkgs, system, ... }:
+        let
+          gossamerPkgs = import ./nix { inherit pkgs; };
+        in
         {
           _module.args.pkgs = import inputs.nixpkgs {
             inherit system;
@@ -40,7 +43,9 @@
             ];
           };
 
-          legacyPackages = import ./nix { inherit pkgs; };
+          legacyPackages = gossamerPkgs;
+
+          checks = import ./nix/checks.nix { inherit gossamerPkgs; };
 
           devShells.default = pkgs.mkShellNoCC {
             packages = with pkgs; [
