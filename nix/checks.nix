@@ -1,7 +1,7 @@
-{ gossamerPkgs }:
+{ buildGossamerApplication }:
 
 {
-  hello-gossamer-app = gossamerPkgs.buildGossamerApplication {
+  hello-app = buildGossamerApplication {
     pname = "hello";
     version = "0.1.0";
     src = ./checks/hello;

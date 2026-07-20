@@ -43,9 +43,13 @@
             ];
           };
 
-          legacyPackages = gossamerPkgs;
+          legacyPackages = {
+            inherit (gossamerPkgs) buildGossamerApplication;
+          };
 
-          checks = import ./nix/checks.nix { inherit gossamerPkgs; };
+          checks = import ./nix/checks.nix {
+            inherit (gossamerPkgs) buildGossamerApplication;
+          };
 
           devShells.default = pkgs.mkShellNoCC {
             packages = with pkgs; [
