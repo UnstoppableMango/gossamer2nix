@@ -32,12 +32,23 @@
 
       perSystem =
         { pkgs, system, ... }:
+        let
+          gossamerPkgs = import ./nix { inherit pkgs; };
+        in
         {
           _module.args.pkgs = import inputs.nixpkgs {
             inherit system;
             overlays = with inputs; [
               mangopkgs.overlays.default
             ];
+          };
+
+          legacyPackages = {
+            inherit (gossamerPkgs) buildGossamerApplication;
+          };
+
+          checks = import ./nix/checks.nix {
+            inherit (gossamerPkgs) buildGossamerApplication;
           };
 
           devShells.default = pkgs.mkShellNoCC {
