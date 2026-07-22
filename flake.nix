@@ -3,7 +3,7 @@
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
-    systems.url = "github:nix-systems/default";
+    systems.url = "github:nix-systems/triplet";
 
     mangopkgs = {
       url = "github:unmango/pkgs";
