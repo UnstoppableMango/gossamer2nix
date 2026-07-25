@@ -14,4 +14,6 @@ format fmt:
 
 .PHONY: nix/checks/hello
 nix/checks/hello:
-	nix build .#checks.hello-app.gen-src --out-link $@
+	rm -rf $@
+	cp -r --no-preserve=mode,ownership "$$(nix build .#hello-gen-src --no-link --print-out-paths)" $@
+	chmod -R u+w $@
