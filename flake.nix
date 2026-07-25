@@ -1,6 +1,15 @@
 {
   description = "A Nix builder for Gossamer";
 
+  nixConfig = {
+    extra-substituters = [
+      "https://mangopkgs.cachix.org"
+    ];
+    extra-trusted-public-keys = [
+      "mangopkgs.cachix.org-1:uJ5FgSbOg1uiXLcL0gBh1lO+y3KVuthy6UeOFYR1fLk="
+    ];
+  };
+
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
     systems.url = "github:nix-systems/triplet";
