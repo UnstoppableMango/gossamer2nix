@@ -34,10 +34,6 @@
         { pkgs, system, ... }:
         let
           gossamerPkgs = import ./nix { inherit pkgs; };
-          checks = import ./nix/checks.nix {
-            inherit (gossamerPkgs) buildGossamerApplication;
-            inherit (pkgs) gossamer runCommand;
-          };
         in
         {
           _module.args.pkgs = import inputs.nixpkgs {
@@ -47,12 +43,10 @@
             ];
           };
 
-          legacyPackages = {
+          checks = import ./nix/checks.nix {
             inherit (gossamerPkgs) buildGossamerApplication;
-            hello-gen-src = checks.hello-app.gen-src;
+            inherit (pkgs) gossamer runCommand;
           };
-
-          inherit checks;
 
           devShells.default = pkgs.mkShellNoCC {
             packages = with pkgs; [
