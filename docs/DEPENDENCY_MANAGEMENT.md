@@ -163,11 +163,10 @@ need to build these too. Five `RustBindingSpec` variants:
   inlined in the manifest
 - `Prebuilt { archive, abi }`: pre-built static archive keyed by ABI version
 
-`gos add --rust-binding <spec>` scaffolds a wrapper crate under
-`.gos-bindings/<name>/` if the dependency doesn't already provide
-`gossamer-binding` entry points (via `register_module!`). This whole FFI
-path is orthogonal to registry/git/tarball `.gos` dependency resolution
-described below, and uses Cargo's own resolution once scaffolded.
+This whole FFI path is orthogonal to registry/git/tarball `.gos`
+dependency resolution described below, and uses Cargo's own resolution
+once scaffolded, so it's a separate dependency graph a nix adapter needs
+to handle via normal Cargo/crates.io tooling, not this pipeline.
 
 ---
 
@@ -324,46 +323,39 @@ for every dependency; this is the reproducibility guarantee, and the
 natural thing for a Nix build to assert/rely on. `check` and `test` do
 **not** enforce lockfile consistency.
 
+Registry-published tarballs are packed deterministically (fixed file
+order, zeroed timestamps/ownership, normalized file mode), which is what
+makes a registry dependency's `sha256` pin stable and reproducible across
+machines and producers, directly relevant to building a Nix fixed-output
+derivation around a fetched package.
+
 ---
 
 ## 8. Fetching and verification
 
-`gossamer-pkg/src/fetch.rs`'s `Fetcher::fetch_one` dispatches per source
-kind:
+`gossamer-pkg/src/fetch.rs` dispatches per source kind:
 
-- **Path**: walks the local tree recursively, rejects symlinks, enforces
-  `MAX_CACHED_SOURCE_FILES` / `MAX_CACHED_SOURCE_BYTES`, and produces an
-  in-memory `BTreeMap<String, Vec<u8>>` of relative path → file bytes.
-- **Registry**: looks up the requested version in a pre-populated
-  `VersionCatalogue` for `download_url` + `tarball_sha256`; rejects yanked
-  versions unless `allow_yanked` is set; requires a valid Ed25519 signature
-  (`SignatureCheck::verify_reader`).
-- **Git**: validates the URL and ref (`validate_git_source`), then shells
-  out to a **hardened** `git`:
-  - `git clone --bare` into the cache, then `git archive` to extract the
-    requested ref into a tarball.
-  - Remote helpers, the `file://` transport, and interactive prompts are
-    all disabled (`protocol.ext.allow=never`, hardened invocation).
-  - Refs accepted for locked/pinned fetches must be full 40- or 64-hex-char
-    object ids, which blocks branch/tag ref-confusion/traversal attacks.
-- **Tarball**: downloaded via the custom `Transport::get_to_writer`,
-  verified against the declared `sha256`, optionally signature-checked,
-  then unpacked (`tar::unpack_reader`), bounded by
-  `tar::MAX_PACKAGE_ARCHIVE_BYTES`.
+- **Path**: read directly from the local filesystem, no fetch/cache/digest
+  involved.
+- **Registry**: looks up the requested version in the registry's version
+  catalogue (§10) for a download URL and tarball checksum; rejects yanked
+  versions unless explicitly overridden; requires a valid Ed25519
+  signature over the tarball.
+- **Git**: clones the repo and extracts the requested ref into a tarball.
+  Refs used for locked/pinned fetches must be full 40- or 64-hex-char
+  object ids, not branch/tag names, so a pin always resolves to one
+  immutable commit.
+- **Tarball**: downloaded over HTTP(S), verified against the declared
+  `sha256`, optionally signature-checked, then unpacked.
 
-Downloads stream to a temporary spool file created with mode `0o600`
-(owner-only); a `HashingFile` wrapper computes the sha256 incrementally
-while writing. Verification (digest, signature, key-pinning against either
-an existing `project.lock` pin or a manifest `[trusted-publishers]` entry)
-happens **before** unpacking.
+Verification (digest, signature, key-pinning against either an existing
+`project.lock` pin or a manifest `[trusted-publishers]` entry) always
+happens **before** the fetched content is unpacked or cached, so a
+corrupted or mismatched download never reaches disk as usable source.
 
-`vendor()` (backing `gos vendor`) writes cached/fetched sources out to disk,
-checking every path with `is_safe_package_path()` to reject directory
-traversal during materialization.
-
-Errors surface as `CacheError` variants: `DigestMismatch`,
-`SignatureInvalid`, `KeyMismatch`, `UntrustedPublisher`, `Yanked`,
-`PathUnreadable`, `CacheIo`, `Unsupported`.
+`gos vendor` writes fetched sources out to a directory (default `vendor/`)
+for offline builds, guarding against path traversal from malicious archive
+entries during materialization.
 
 ---
 
@@ -375,13 +367,11 @@ Errors surface as `CacheError` variants: `DigestMismatch`,
 - Layout: every cached, verified source tree lives at
   `<cache-root>/pkg/<sha256>/source/`, paired with an `id.txt` sidecar file
   so the runtime can re-hash on read and reject silent corruption.
-- **Cache key** = sha256 of the canonical `path\0bytes\0...` serialization
-  of the file map (content-addressed, not source-kind- or version-keyed).
-  `SourceTreeDigest` supports incremental hashing (`update_file` in sorted
-  path order) so the digest can be computed without a second tree walk.
-- Admission limits: `MAX_CACHED_SOURCE_FILES` = 4096,
-  `MAX_CACHED_SOURCE_FILE_BYTES` = 16 MiB, `MAX_CACHED_SOURCE_BYTES` = 64
-  MiB aggregate, per package.
+- **Cache key** = sha256 of the canonical serialization of the fetched
+  file map (content-addressed, not source-kind- or version-keyed), the
+  same digest that ends up in `project.lock`.
+- Admission limits per package: 4096 files, 16 MiB per file, 64 MiB
+  aggregate.
 - **No eviction, pruning, or TTL logic exists in this module**: the cache
   only validates and stores; nothing in `gossamer-pkg` ever shrinks it.
   (`gos cache --prune` exists at the CLI layer per `docs_src/toolchain.md`,
@@ -392,67 +382,33 @@ Errors surface as `CacheError` variants: `DigestMismatch`,
 
 ## 10. Registry protocol
 
-Custom HTTP(S) client (`gossamer-pkg/src/transport.rs`), no external HTTP
-library:
+A registry is a plain HTTP(S) service; nothing about it is
+gossamer-specific infrastructure. `[registries]` maps a DNS-style domain
+prefix to a base URL; a dependency's registry is selected by matching its
+project id's domain against that table (exact matching-precedence logic
+wasn't found in the excerpted source; treat as **unconfirmed** rather than
+assumed longest-prefix matching).
 
-- `std::net::TcpStream` for plain HTTP, `rustls` (Mozilla/`webpki-roots`
-  root CAs) for HTTPS, hand-rolled HTTP/1.1 parsing.
-- Timeouts: 10s connect, 30s read/write. **No retry logic.**
-- **No proxy support**: hostnames are resolved directly.
-- Response limits: 64 MiB body, 64 KiB headers.
-- HTTP-to-non-loopback-hosts is rejected unless
-  `GOS_ALLOW_INSECURE_REGISTRY=1` is set (`new_mozilla_roots_insecure`).
+Per SPEC §16.8, a registry "maps `/v1/<project-id>/<version>` to a signed
+tarball plus metadata." The per-project version catalogue consulted during
+resolution (§6) holds, per version: `version`, `yanked`, `yank_reason`,
+`download_url`, `tarball_sha256`, `signature`, `public_key`. **The exact
+HTTP GET endpoint used to build that catalogue (the index/version-listing
+call) was not located in the crate excerpts read for this document**; do
+not assume a specific path format for it without re-checking source.
 
-`[registries]` maps a DNS-style domain prefix to a base URL; a dependency's
-registry is selected by matching its `ProjectId::domain()` against that
-table (exact matching-precedence logic wasn't found in the excerpted
-source; treat as **unconfirmed** rather than assumed longest-prefix
-matching).
+Registries are optional and federated: "no central registry is shipped
+with the toolchain and none is required to use Gossamer" (SPEC §16.8). A
+registry tarball must carry a valid Ed25519 signature whose advertised
+publisher key matches either an existing `project.lock` pin or a
+`[trusted-publishers]` binding; this is the entire trust model, there's no
+CA-like central authority.
 
-Download side: per SPEC §16.8, a registry is "a plain HTTP service that
-maps `/v1/<project-id>/<version>` to a signed tarball plus metadata." The
-in-memory `VersionCatalogue`/`CatalogueEntry` (queried during resolution,
-§6) is keyed by project id and holds, per version: `version`, `yanked`,
-`yank_reason`, `download_url`, `tarball_sha256`, `signature`,
-`public_key`. The `Fetcher` is handed an already-populated
-`VersionCatalogue` (`with_catalogue`). **The exact HTTP GET endpoint used
-to build that catalogue (the index/version-listing call) was not located
-in the crate excerpts read for this document**; do not assume a specific
-path format for it without re-checking source.
-
-Upload side (`gossamer-pkg/src/publish.rs`), used by `gos publish`/`gos
-yank`/`gos owner`:
-
-| Operation | Method | Path | Body |
-|---|---|---|---|
-| Upload (legacy v1) | PUT/POST | `/v1/upload/{id}/{version}` | JSON: base16 artifact + sha256 + optional signature/pubkey |
-| Upload (streaming v2) | PUT/POST | `/v1/upload/{id}/{version}` | raw USTAR bytes; headers `X-Gossamer-Publish-Protocol: 2`, `X-Gossamer-Artifact-Sha256`, `X-Gossamer-Signature-Input`, `X-Gossamer-Signature`, `X-Gossamer-Public-Key` |
-| Yank | POST | `/v1/yank/{id}/{version}` | JSON `{ reason? }` |
-| Owner | POST | `/v1/owners/{id}` | JSON `{ op: "add"\|"remove"\|"list", user? }` |
-
-Authenticated requests send `Authorization: Bearer <token>`. Registries are
-optional and federated: "no central registry is shipped with the
-toolchain and none is required to use Gossamer" (SPEC §16.8). A registry
-tarball must carry a valid Ed25519 signature whose advertised publisher key
-matches either an existing `project.lock` pin or a `[trusted-publishers]`
-binding; this is the entire trust model, there's no CA-like central
-authority.
-
-### Credentials
-
-`gossamer-pkg/src/credentials.rs`: `$GOS_CREDENTIALS_FILE`, else
-`~/.gossamer/credentials.toml`:
-
-```toml
-[registries."https://registry.example.org/v1"]
-token = "…"
-```
-
-Stored in plaintext but file permissions are forced to `0o600` (POSIX) /
-owner-only DACL (Windows), written atomically (temp file + rename, with the
-permission applied before rename). `gos login --registry URL` writes a
-token (interactive prompt, or `$GOS_TOKEN`); `gos logout --registry URL`
-removes it.
+Private registries authenticate reads with a bearer token from
+`~/.gossamer/credentials.toml` (managed by `gos login`/`gos logout`).
+Publishing (`gos publish`/`gos yank`/`gos owner`) has its own upload
+protocol, but that's a producer-side concern, not part of resolving or
+building against dependencies, so it's out of scope here.
 
 ---
 
@@ -466,12 +422,12 @@ removes it.
 | `gos update` | none | re-walks the registry index and re-resolves, ignoring the existing lock (delegates to `fetch(manifest, offline=false, update=true)`) |
 | `gos fetch` | `--manifest PATH`, `--offline`, `--update` | resolves + populates the local cache + writes/refreshes `project.lock`; `--offline` refuses to populate any cache entry not already present |
 | `gos vendor` | `--manifest PATH`, `--out DIR` (default `vendor`) | materializes all transitive deps to disk for offline builds |
-| `gos publish` | `--registry URL`, `--dry-run` | deterministically packs, hashes, optionally signs, uploads |
-| `gos yank <id>@<ver>` | `--reason MSG` | marks a published version yanked |
-| `gos login`/`gos logout` | `--registry URL` | manage bearer-token credentials |
-| `gos owner` | `add\|remove\|list <id> [<user>]` | registry ACL management |
 | `gos build`/`gos run`/`gos watch` | `--locked` | requires `project.lock` present and matching resolver output for every dependency |
 | `gos check`/`gos test` | none | **no** lockfile enforcement |
+
+(`gos publish`, `gos yank`, `gos login`/`gos logout`, `gos owner` also
+exist, for the registry-publishing workflow; irrelevant to
+building/consuming dependencies, so omitted here.)
 
 `gos build` itself also takes `--release`, `-g`, `--dynamic`, `--target
 TRIPLE`, `--out-dir PATH`, and PGO flags (`--pgo-collect`,
@@ -525,61 +481,13 @@ end-to-end inside a sandboxed derivation.
 
 ---
 
-## 13. Deterministic package tarball format
-
-`gos publish` packs via `pack_crate`/`pack_crate_streaming`
-(`gossamer-pkg/src/publish.rs`), producing a byte-identical USTAR archive
-for a given source tree:
-
-- Recursively walks the project root, **excluding**: `target/`, `vendor/`,
-  `.git/`, `.gos-cache/`, `.gos-bindings/`, `node_modules/`, dotfiles,
-  `.DS_Store`, and `*.rs.bk` files.
-- File entries emitted in **lexicographic order**.
-- `mtime`/`uid`/`gid` are zeroed; mode normalized to `0o644`.
-- End-of-archive marker is two 512-byte zero blocks (standard USTAR EOF).
-- Symlinks are rejected (portability/security).
-- `project.toml` is required at the root.
-- Per-file and aggregate size limits enforced before reading contents.
-- The computed sha256 is checked against the declared digest before
-  upload.
-
-Determinism here is what makes registry-source `sha256` pins in
-`project.lock` reproducible across machines, directly relevant to
-building a Nix fixed-output derivation around a fetched package.
-
----
-
-## 14. `gos new` scaffolding (reference)
-
-`gossamer-pkg/src/scaffold.rs` generates, for a fresh project:
-
-`project.toml`:
-```toml
-[project]
-id = "{id}"
-version = "{version}"
-
-[dependencies]
-```
-
-`src/main.gos`:
-```
-fn main() {
-    println!("hello from {tail}")
-}
-```
-
-(`println!` is one of a handful of macros always in scope without a `use`.)
-
----
-
 ## Sources
 
 - `SPEC.md` §6 (Projects, Modules, `use`, dependency resolution, lockfile,
   registries) and §16 (toolchain command reference), in
   [danpozmanter/gossamer](https://github.com/danpozmanter/gossamer).
 - `crates/gossamer-pkg/src/{manifest,lockfile,resolver,fetch,cache,version,
-  id,transport,edit,scaffold,credentials,publish}.rs`
+  id}.rs`
 - `crates/gossamer-cli/src/{cli.rs,paths.rs,cmd/{pkg,build,check}.rs,main.rs}`
 - `crates/gossamer-resolve/src/external.rs`
 - `crates/gossamer-driver/src/{frontend,pipeline}.rs`
