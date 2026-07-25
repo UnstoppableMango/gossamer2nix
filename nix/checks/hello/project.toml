@@ -1,5 +1,0 @@
-[project]
-id = "example.com/hello"
-version = "0.1.0"
-
-[dependencies]

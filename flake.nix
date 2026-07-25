@@ -49,6 +49,7 @@
 
           checks = import ./nix/checks.nix {
             inherit (gossamerPkgs) buildGossamerApplication;
+            inherit (pkgs) gossamer runCommand;
           };
 
           devShells.default = pkgs.mkShellNoCC {
