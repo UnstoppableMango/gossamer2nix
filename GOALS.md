@@ -5,6 +5,7 @@
 - Expose a `buildGossamerApplication` Nix builder for Gossamer projects.
 - Fully reproducible, offline/sandboxed builds.
 - Nixpkgs-idiomatic: overlay-friendly, works with flakes and legacy `default.nix`.
+- Support `[rust-bindings]` (FFI) deps by building the underlying Cargo crate with existing Rust-on-Nix tooling (e.g. crane, naersk, `buildRustPackage`), not a bespoke Cargo resolver.
 
 ## Non-goals
 
