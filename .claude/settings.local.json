@@ -3,7 +3,14 @@
     "allow": [
       "Bash(make gen *)",
       "Bash(nix build *)",
-      "Bash(nix flake *)"
+      "Bash(nix flake *)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Bash(gh repo *)",
+      "Bash(gh api *)",
+      "WebFetch(domain:nix-community.github.io)",
+      "WebFetch(domain:api.github.com)"
     ]
   }
 }
