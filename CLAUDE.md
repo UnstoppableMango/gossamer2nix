@@ -22,6 +22,11 @@ nix flake update       # update flake inputs (Makefile: make update)
 - `nix/builder.nix` — the actual builder: `stdenv.mkDerivation` wrapper running `gos build --release --out-dir dist`, installs everything from `dist/*` to `$out/bin`. Takes `gosBuildFlags` (extra args to `gos build`, e.g. `--target`, `--locked`). Accepts arbitrary passthrough attrs like `buildGoModule`-style builders.
 - `nix/checks.nix` — flake checks; currently just `hello-app`, a smoke build via `gos new` scaffolding + `buildGossamerApplication`.
 
+## Deps-lock design
+
+- `docs/DEPS.md` — Gossamer's own dependency/lockfile/resolver model, read from upstream `gossamer-pkg`/`gossamer-cli` source (not upstream's own docs, which don't cover this).
+- `docs/deps/` — 8 prior-art `*2nix` tools surveyed (gomod2nix, crate2nix, naersk, bun2nix, pnpm2nix, poetry2nix, pip2nix, zon2nix) + `DESIGN.md`, the synthesized `gossamer2nix` architecture proposal. **Read `DESIGN.md` before starting deps-lock/CLI implementation** — it already resolves the upstream path-only-deps gap via a manifest-patching shim (§3.3) and covers hash-compatibility per source kind (§2).
+
 ## Gotchas
 
 - Binary cache: `mangopkgs.cachix.org` configured in `flake.nix` `nixConfig` — needed to avoid rebuilding the `gossamer` toolchain itself from the overlay.
