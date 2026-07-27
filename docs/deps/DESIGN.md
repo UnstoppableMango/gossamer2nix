@@ -2,17 +2,17 @@
 
 This document proposes a design for `gossamer2nix`'s deps-lock/Nix adapter, synthesizing lessons from eight prior-art `*2nix` tools (`GOMOD2NIX.md`, `CRATE2NIX.md`, `NAERSK.md`, `BUN2NIX.md`, `PNPM2NIX.md`, `POETRY2NIX.md`, `PIP2NIX.md`, `ZON2NIX.md` in this directory) against Gossamer's actual dependency model, as documented from upstream source in [`../DEPS.md`](../DEPS.md).
 
-**This is a proposal, not an implementation plan with committed dates.** It is gated on one unresolved upstream question (§0) that determines how much of it is buildable at all today.
+**This is a proposal, not an implementation plan with committed dates.**
 
 ---
 
-## 0. The gating question
+## 0. The upstream gap, and why it no longer blocks this design
 
-[`DEPS.md` §12](../DEPS.md) is now **confirmed, not just inferred from absence**: only `path`-kind dependencies are wired into compilation today, via naive source-concatenation (`bundle_path_dependencies`). Upstream's own doc comment on that function says so directly — *"Non-path dependencies are untouched."* No `CHANGELOG.md` entry across 35 versions (0.8.0, when the fetch/lock/registry pipeline shipped, through the current 0.35.0) ever wires registry/git/tarball deps into compilation, and no open issue tracks it as a gap.
+[`DEPS.md` §12](../DEPS.md) is confirmed, not just inferred from absence: only `path`-kind dependencies are wired into compilation today, via naive source-concatenation (`bundle_path_dependencies`). Upstream's own doc comment on that function says so directly — *"Non-path dependencies are untouched."* No `CHANGELOG.md` entry across 35 versions (0.8.0, when the fetch/lock/registry pipeline shipped, through the current 0.35.0) ever wires registry/git/tarball deps into compilation, and no open issue tracks it as a gap.
 
-So registry/git/tarball dependencies have a fully real fetch/lock/cache pipeline (`gos fetch`, `project.lock`, content-addressed cache) with **no build-time consumer, period** — not a maybe.
+**This previously gated the whole non-`path` design on an upstream fix arriving. It no longer does.** §3.3 below (the path-shim) sidesteps the gap entirely: `gossamer2nix` fetches every non-`path` dependency itself (which it has to do anyway, for a Nix-native hash), then rewrites every `project.toml` in the transitive graph so every dependency — regardless of its *original* declared kind — is a `{ path = "<fetched store path>" }` entry before `gos build` ever runs. Path-kind consumption is confirmed working today (`bundle_path_dependencies`), so this makes registry/git/tarball dependencies buildable **now**, without waiting for upstream to wire in a second consumption path.
 
-Every design decision below about registry/git/tarball handling is still written as if that wiring exists or will exist, because that's the only way a `gossamer2nix` supporting non-`path` dependencies is worth building, and this gap could close in any upstream release. But it targets a **future** capability, not a present one. The smoke test originally proposed here (extend `nix/checks.nix`'s `hello-app` pattern with a registry-dependency check) is worth keeping — not to discover the answer, but as a **regression guard** that will start failing (in a good way) the day upstream wires it in. Until then, `gossamer2nix`'s real-world scope is just what `nix/builder.nix` already does, and §2–§4 below are ready-to-build designs waiting on upstream, not work to start now.
+The regression-guard smoke test is still worth keeping (extend `nix/checks.nix`'s `hello-app` pattern with a registry-dependency check, run once *without* the shim) — not because anything is blocked on it, but because if upstream ever does wire in native non-path consumption, that's the signal `gossamer2nix` could drop the manifest-patching step and rely on `gos build --locked` directly instead.
 
 ---
 
@@ -84,11 +84,21 @@ fetchGossamerDependency = { hash, id, source, ... }@dep:
 
 **Filter parity is load-bearing.** `gomod2nix`'s one universally-applicable gotcha (`GOMOD2NIX.md` §5): whatever filtering is applied to a fetched tree before hashing at `generate` time must be *bit-for-bit identical* to the filtering applied inside the FOD at build time, or the two independently-computed hashes will never agree. If `generate` and `fetch-dependency.sh` end up implemented as genuinely separate code paths (likely, since one runs outside Nix and one runs inside a derivation), this needs an explicit shared/tested filter rule, not two hand-copies that can drift.
 
-All fetched dependencies get symlink-assembled into a single directory (mirroring `gomod2nix`'s `mkVendorEnv`), in whatever shape `gos build`'s eventual non-`path` dependency consumption expects — this shape is currently undefined upstream (the §0 gate), so this part of the design is necessarily provisional.
+All fetched dependencies land as individual store paths, one per non-`path` dependency in the transitive graph. §3.3 turns those into something `gos build` can actually consume today.
 
-### 3.3 `buildGossamerApplication` integration
+### 3.3 The path-shim: converting every dependency to `path`-kind before `gos build` runs
 
-Extend the existing `nix/builder.nix` (currently a thin `gos build --release --out-dir dist` wrapper) to accept an optional `depsLock` attribute (path to a generated `gossamer2nix.toml`). When present, assemble the fetched-dependency tree (§3.2) and make it available to `gos build --locked` before invoking it — offline, sandboxed, exactly like every prior-art tool's final compile step. When absent (today's status quo), behave exactly as `nix/builder.nix` does now — path-only dependencies, no lock, no change to current behavior. This keeps the existing `hello-app` check (`nix/checks.nix`) working unmodified while the non-path story is built out incrementally.
+This is the mechanism that makes §3.1–§3.2 buildable now instead of waiting on upstream (§0). Verified directly against `crates/gossamer-cli/src/paths.rs` on current `main`, 2026-07-27:
+
+1. **`collect_path_deps`/`path_dep_entry` accept an absolute `path`.** `dependency_path` reads a `DependencySpec::Inline(InlineDependency::Path { path })`'s `path` string and does `manifest_dir.join(rel).canonicalize()`. `PathBuf::join` with an absolute right-hand side discards the base and uses the absolute path directly — plain Rust stdlib behavior, not something Gossamer opts into or out of. A Nix store path (`/nix/store/...`) in `path = "..."` therefore works with zero special-casing on either side.
+2. **A path-dependency target just needs to look like a real Gossamer project.** `path_dep_entry` requires `<dep_root>/project.toml` plus an entry file (`project.entry`, else `src/lib.gos`/`lib.gos`/`src/main.gos`/`main.gos`). Registry and git sources satisfy this by construction — they *are* Gossamer projects, distributed as source. Tarball (`url`) dependencies are the one kind worth an empirical check before relying on this (`DEPS.md` §3 flags them as having no first-class analogue in other ecosystems).
+3. **The rewrite must be transitive, not just root-level.** `collect_path_deps` re-parses *each* dependency's own `project.toml` fresh as it walks — so `gossamer2nix generate` must patch every fetched dependency's manifest too, converting *its* non-`path` deps into `path` pointers at sibling fetched store paths, not just the entry project's manifest. Concretely: walk `project.lock`'s full transitive entry list (already available, §3.1 step 1), fetch each into its own store path (§3.2), then for every fetched tree *and* the entry project, rewrite `[dependencies]` so every value becomes `{ path = "<sibling's store path>" }`. The original version/git-ref/url constraint is simply dropped at this point — it already did its job once, when `gos`'s resolver produced `project.lock`; nothing is lost by not re-checking it (§1.1's "trust the lock" principle applies here too).
+4. **Never pass `--locked`.** Checked `cli.rs`: `locked` is a plain opt-in flag (default `false`), enforced through a separate `enforce_lockfile_if_requested` call fully decoupled from `read_entry_source`/`bundle_path_dependencies` (the actual compile path in `build.rs` never touches `project.lock` at all). The patched, all-`path` manifest legitimately no longer matches `project.lock`'s recorded source kinds, so `--locked` must stay off — reproducibility instead comes entirely from §3.2's Nix FOD hash-checks, which is a strictly stronger guarantee than `gos`'s own drift check anyway.
+5. **`[rust-bindings]` is untouched by this trick.** It's a separate, Cargo-resolved graph (§4) — the path-shim only applies to the `.gos`-level `[dependencies]` graph.
+
+### 3.4 `buildGossamerApplication` integration
+
+Extend the existing `nix/builder.nix` (currently a thin `gos build --release --out-dir dist` wrapper) to accept an optional `depsLock` attribute (path to a generated `gossamer2nix.toml`). When present: assemble the fetched-dependency tree (§3.2), patch every manifest in the graph to `path`-kind (§3.3), then run a plain `gos build --release` (no `--locked`) against the result — offline, sandboxed, exactly like every prior-art tool's final compile step. When absent (today's status quo), behave exactly as `nix/builder.nix` does now — path-only dependencies, no lock, no change to current behavior. This keeps the existing `hello-app` check (`nix/checks.nix`) working unmodified while the non-path story is built out.
 
 ---
 
@@ -108,11 +118,13 @@ This is lower priority than §0/§2/§3 — it only matters once a Gossamer proj
 
 ## 5. Proposed phasing
 
+None of this is gated on upstream anymore (§0) — the path-shim (§3.3) makes the whole non-`path` story buildable now. Phasing below is about sequencing effort, not waiting on anyone else.
+
 1. **Phase 0 (now, no new code):** Status quo. `nix/builder.nix` handles path-only deps. Unaffected by anything below.
-2. **Phase 1 (regression guard for §0, not discovery):** Add a second `nix/checks.nix` smoke test that gives a scaffolded project a registry dependency and expects `gos build --locked` to *fail* to consume it. Cheap, and it flips to a useful signal (upstream shipped the wiring) the moment it starts unexpectedly passing — that's the actual trigger for starting Phase 3.
-3. **Phase 2 (settle §2):** Once dependencies are confirmed real, compute Gossamer's native `sha256` and an independent NAR+SHA-256 for the same fetched dependency and compare. This one comparison determines whether §3.1's `generate` step needs a full refetch-and-rehash (`gomod2nix`-shaped) or a cheap reformat (`poetry2nix`-shaped).
-4. **Phase 3:** Build `gossamer2nix generate` + the per-dependency FOD mechanism (§3.1–§3.2) for registry and git dependencies first (git is the easy case per §3.1 — already commit-pinned). Tarball (`url`) dependencies next, reusing whatever §2 established. Extend `buildGossamerApplication` (§3.3) behind an opt-in `depsLock` attribute so existing path-only builds are unaffected.
-5. **Phase 4 (independent of 1–4, lower priority):** `[rust-bindings]` support (§4), once a real project needs it.
+2. **Phase 1 (settle §2):** Fetch one real registry dependency, compute both Gossamer's native `sha256` (from `project.lock`) and an independent NAR+SHA-256 over the same tree, and compare. This one comparison determines whether §3.1's `generate` step needs a full refetch-and-rehash (`gomod2nix`-shaped) or a cheap reformat (`poetry2nix`-shaped) — worth resolving before writing `generate` for real.
+3. **Phase 2:** Build `gossamer2nix generate` + the per-dependency FOD mechanism (§3.1–§3.2) for registry and git dependencies first (git is the easy case — already commit-pinned). Tarball (`url`) dependencies next, after confirming they unpack to a `project.toml`-rooted tree (§3.3 point 2).
+4. **Phase 3:** Implement the manifest-patching pass (§3.3) and wire it into `buildGossamerApplication` (§3.4) behind an opt-in `depsLock` attribute, so existing path-only builds are unaffected. Add the `nix/checks.nix` regression-guard test (§0) alongside this — a scaffolded project with a real registry dependency, built end-to-end through the shim.
+5. **Phase 4 (independent of 1–3, lower priority):** `[rust-bindings]` support (§4), once a real project needs it.
 
 ---
 
@@ -122,4 +134,4 @@ Synthesized from this repo's own prior research:
 - [`../DEPS.md`](../DEPS.md) — Gossamer's dependency model, read from `gossamer-pkg`/`gossamer-resolve`/`gossamer-cli`/`gossamer-driver` source, 2026-07-25.
 - [`GOMOD2NIX.md`](./GOMOD2NIX.md), [`CRATE2NIX.md`](./CRATE2NIX.md), [`NAERSK.md`](./NAERSK.md), [`BUN2NIX.md`](./BUN2NIX.md), [`PNPM2NIX.md`](./PNPM2NIX.md), [`POETRY2NIX.md`](./POETRY2NIX.md), [`PIP2NIX.md`](./PIP2NIX.md), [`ZON2NIX.md`](./ZON2NIX.md) — eight prior-art `*2nix` tools, all read from upstream source 2026-07-26.
 
-As with every document in this set: this reflects one point-in-time synthesis and rests on §0's gating question being unresolved as of this writing. Re-verify against current upstream `gossamer` source before treating §3's registry/git/tarball design as buildable.
+As with every document in this set: this reflects one point-in-time synthesis. §3.3's path-shim was verified directly against `crates/gossamer-cli/src/paths.rs` and `cli.rs` on upstream `main`, 2026-07-27 — re-verify against current upstream source before treating it as buildable, since it depends on `bundle_path_dependencies`'s exact behavior staying stable.
