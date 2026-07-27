@@ -7,8 +7,8 @@ It exists to ground the design of this repo's `gossamer2nix` deps-lock/Nix adapt
 **This reflects one point-in-time reading of upstream `main` and may drift.**
 Re-verify struct/field names and CLI flags against current upstream source before depending on exact details in code.
 
-**Key finding (§12): as read, `gos build` only wires `path`-kind dependencies into compilation; no code path was found consuming a `vendor/` dir or the package cache for registry/git/tarball deps during `build`/`run`/`check`/`test`.
-Confirm this against upstream before assuming `gos build --locked` can build a project with non-path dependencies end-to-end.**
+**Key finding (§12), now confirmed (2026-07-27): `gos build` only wires `path`-kind dependencies into compilation; registry/git/tarball dependencies have a real fetch/lock/registry pipeline (since 0.8.0) but no build-time consumer at all, on current upstream `main`.
+This is no longer a gap inferred from absence — it's stated outright in upstream's own source comment (`paths.rs`'s `bundle_path_dependencies`: "Non-path dependencies are untouched"), and corroborated by 35 versions of `CHANGELOG.md` never once wiring them in. Do not assume `gos build --locked` can build a project with non-path dependencies end-to-end — it currently cannot.**
 
 ---
 
@@ -327,7 +327,7 @@ Publishing (`gos publish`/`gos yank`/`gos owner`) has its own upload protocol, b
 
 ---
 
-## 12. How `gos build` actually consumes dependencies: a gap to design around
+## 12. How `gos build` actually consumes dependencies: a confirmed gap to design around
 
 This is the most load-bearing finding for the Nix adapter, verified by reading `gossamer-cli/src/paths.rs`, `cmd/build.rs`, `cmd/check.rs`, `main.rs`, `cli.rs`, and driver `frontend.rs`/`pipeline.rs`:
 
@@ -344,9 +344,9 @@ out.push_str(&format!(
 **No code path was found** in the CLI (`build.rs`, `check.rs`, `main.rs`, `cli.rs`) or in `gossamer-driver` (`frontend.rs`, `pipeline.rs`) that reads a `vendor/` directory or the global `~/.gossamer/cache` during `build`/`run`/`check`/`test` to pull in registry, git, or tarball dependency source.
 `gossamer-resolve/src/external.rs` (which the frontend consults for external module lookups) is purely an in-memory table populated by `set_external_modules` at process startup; its caller/data source was not located in the crates read for this document.
 
-**Practical implication:** as implemented today, `gos fetch` / `gos vendor` / `project.lock` are a fully real fetch-and-lock pipeline, but there is no confirmed mechanism by which their output actually reaches the compiler for non-path dependencies.
-Either (a) this wiring exists somewhere not covered by this reading and should be re-checked before finalizing the adapter design, or (b) registry/git/tarball dependencies are not yet consumable by `gos build` at all, and only `path`-style deps are currently real for compilation purposes.
-**Treat this as the single highest-priority thing to confirm against upstream (or upstream maintainers) before committing to a `gossamer2nix` design** that assumes `gos build --locked` can build a project with non-path dependencies end-to-end inside a sandboxed derivation.
+**Practical implication:** as implemented today, `gos fetch` / `gos vendor` / `project.lock` are a fully real fetch-and-lock pipeline, but there is no mechanism by which their output actually reaches the compiler for non-path dependencies.
+
+**Confirmed 2026-07-27, not just inferred from absence:** `paths.rs`'s own doc comment states it outright — *"Non-path dependencies are untouched."* No `CHANGELOG.md` entry across 0.8.0 (when the fetch/lock/registry pipeline shipped) through the current 0.35.0 ever wires registry/git/tarball deps into compilation, versus an explicit entry for path-dependency linking at 0.24.0. `gos cache --clear` (0.33.1) is explicitly scoped to *exclude* vendored dependencies, so `vendor/` is a maintained, deliberate concept — just one with no build-time reader. No open issue tracks this as a known gap (all 71 issues in the repo are closed; none matches). **Treat this as settled, not as something to re-confirm** — `gos build --locked` cannot build a project with non-path dependencies end-to-end today. See [`deps/DESIGN.md`](./deps/DESIGN.md) §0 for how this shapes `gossamer2nix`'s phasing.
 
 ---
 
