@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(make gen *)",
-      "Bash(nix build *)",
-      "Bash(nix flake *)"
-    ]
-  }
-}
