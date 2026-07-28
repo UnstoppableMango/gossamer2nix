@@ -15,6 +15,7 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
     systems.url = "github:nix-systems/triplet";
+    crane.url = "github:ipetkov/crane";
 
     mangopkgs = {
       url = "github:unmango/pkgs";
@@ -38,7 +39,6 @@
       url = "github:nix-community/fenix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    crane.url = "github:ipetkov/crane";
   };
 
   outputs =
@@ -57,6 +57,15 @@
         let
           gossamerPkgs = import ./nix { inherit pkgs; };
           rustToolchain = inputs'.fenix.packages.stable.toolchain;
+
+          craneLib = import ./nix/rust.nix {
+            inherit rustToolchain;
+            craneLib = inputs.crane.mkLib pkgs;
+          };
+
+          gossamer2nix = craneLib.buildPackage {
+            src = craneLib.cleanCargoSource ./.;
+          };
         in
         {
           _module.args.pkgs = import inputs.nixpkgs {
@@ -64,6 +73,11 @@
             overlays = with inputs; [
               mangopkgs.overlays.default
             ];
+          };
+
+          packages = {
+            inherit gossamer2nix;
+            default = gossamer2nix;
           };
 
           checks = import ./nix/checks.nix {
