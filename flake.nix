@@ -4,9 +4,11 @@
   nixConfig = {
     extra-substituters = [
       "https://mangopkgs.cachix.org"
+      "https://fenix.cachix.org"
     ];
     extra-trusted-public-keys = [
       "mangopkgs.cachix.org-1:uJ5FgSbOg1uiXLcL0gBh1lO+y3KVuthy6UeOFYR1fLk="
+      "fenix.cachix.org-1:ecJhr+RdYEdcVgUkjruiYhjbBloIEGov7bos90cZi0Q="
     ];
   };
 
@@ -31,6 +33,12 @@
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    fenix = {
+      url = "github:nix-community/fenix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    crane.url = "github:ipetkov/crane";
   };
 
   outputs =
@@ -40,9 +48,15 @@
       imports = [ inputs.treefmt-nix.flakeModule ];
 
       perSystem =
-        { pkgs, system, ... }:
+        {
+          inputs',
+          pkgs,
+          system,
+          ...
+        }:
         let
           gossamerPkgs = import ./nix { inherit pkgs; };
+          rustToolchain = inputs'.fenix.packages.stable.toolchain;
         in
         {
           _module.args.pkgs = import inputs.nixpkgs {
@@ -58,15 +72,18 @@
           };
 
           devShells.default = pkgs.mkShellNoCC {
-            packages = with pkgs; [
-              gnumake
-              gossamer
-              nixfmt
-            ];
+            packages =
+              (with pkgs; [
+                gnumake
+                gossamer
+                nixfmt
+              ])
+              ++ [ rustToolchain ];
           };
 
           treefmt.programs = {
             nixfmt.enable = true;
+            rustfmt.enable = true;
           };
         };
     };

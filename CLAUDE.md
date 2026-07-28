@@ -13,14 +13,15 @@ nix fmt               # format via treefmt, nixfmt (Makefile: make format / make
 nix flake update       # update flake inputs (Makefile: make update)
 ```
 
-`direnv` (`.envrc` → `use flake`) drops you into `devShells.default` (gnumake, gossamer, nixfmt).
+`direnv` (`.envrc` → `use flake`) drops you into `devShells.default` (gnumake, gossamer, nixfmt, fenix-provided stable Rust toolchain).
 
 ## Architecture
 
-- `flake.nix` — flake-parts based. Pulls in `mangopkgs` (github:unmango/pkgs) overlay for the `gossamer` package itself — nixpkgs upstream has no `gossamer` derivation yet.
+- `flake.nix` — flake-parts based. Pulls in `mangopkgs` (github:unmango/pkgs) overlay for the `gossamer` package itself — nixpkgs upstream has no `gossamer` derivation yet. Also pulls in `fenix` (Rust toolchain, for future `gossamer2nix` CLI dev) and `crane` (Cargo-in-Nix build orchestrator, for future `[rust-bindings]` support).
 - `nix/default.nix` — exports `buildGossamerApplication` (via `pkgs.callPackage ./builder.nix { }`).
 - `nix/builder.nix` — the actual builder: `stdenv.mkDerivation` wrapper running `gos build --release --out-dir dist`, installs everything from `dist/*` to `$out/bin`. Takes `gosBuildFlags` (extra args to `gos build`, e.g. `--target`, `--locked`). Accepts arbitrary passthrough attrs like `buildGoModule`-style builders.
 - `nix/checks.nix` — flake checks; currently just `hello-app`, a smoke build via `gos new` scaffolding + `buildGossamerApplication`.
+- `nix/rust.nix` — crane scaffolding for future `[rust-bindings]` (FFI) support (GOALS.md, docs/deps/DESIGN.md §4). Not yet called from anywhere — no Gossamer project declares `[rust-bindings]` yet.
 
 ## Deps-lock design
 
