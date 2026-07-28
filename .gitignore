@@ -3,3 +3,8 @@
 .direnv/
 bin/
 .claude/*
+
+
+# Added by cargo
+
+/target
