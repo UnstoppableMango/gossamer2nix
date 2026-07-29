@@ -2,7 +2,7 @@
 
 Nix builder for [Gossamer](https://github.com/danpozmanter/gossamer) (Rust-flavored, Go-shaped lang, `.gos` files). In the spirit of `gomod2nix`. See [GOALS.md](./GOALS.md) for scope/non-goals.
 
-**Status: early — no `gossamer2nix` CLI / deps-lock generation implemented yet.** Only the Nix builder side exists so far.
+**Status: early.** Nix builder side works. `gossamer2nix` CLI has a bare clap skeleton (`src/main.rs`, no logic) — deps-lock generation not implemented yet.
 
 ## Commands
 
@@ -17,11 +17,12 @@ nix flake update       # update flake inputs (Makefile: make update)
 
 ## Architecture
 
-- `flake.nix` — flake-parts based. Pulls in `mangopkgs` (github:unmango/pkgs) overlay for the `gossamer` package itself — nixpkgs upstream has no `gossamer` derivation yet. Also pulls in `fenix` (Rust toolchain, for future `gossamer2nix` CLI dev) and `crane` (Cargo-in-Nix build orchestrator, for future `[rust-bindings]` support).
+- `flake.nix` — flake-parts based. Pulls in `mangopkgs` (github:unmango/pkgs) overlay for the `gossamer` package itself — nixpkgs upstream has no `gossamer` derivation yet. Also pulls in `fenix` (Rust toolchain) and `crane` (Cargo-in-Nix build orchestrator), used to build the `gossamer2nix` CLI itself (flake's `default` package).
+- `Cargo.toml` / `src/main.rs` — the `gossamer2nix` CLI (clap-based). Skeleton only, no logic yet.
 - `nix/default.nix` — exports `buildGossamerApplication` (via `pkgs.callPackage ./builder.nix { }`).
 - `nix/builder.nix` — the actual builder: `stdenv.mkDerivation` wrapper running `gos build --release --out-dir dist`, installs everything from `dist/*` to `$out/bin`. Takes `gosBuildFlags` (extra args to `gos build`, e.g. `--target`, `--locked`). Accepts arbitrary passthrough attrs like `buildGoModule`-style builders.
 - `nix/checks.nix` — flake checks; currently just `hello-app`, a smoke build via `gos new` scaffolding + `buildGossamerApplication`.
-- `nix/rust.nix` — crane scaffolding for future `[rust-bindings]` (FFI) support (GOALS.md, docs/deps/DESIGN.md §4). Not yet called from anywhere — no Gossamer project declares `[rust-bindings]` yet.
+- `nix/rust.nix` — shared `craneLib` (toolchain-overridden). Used now to build the `gossamer2nix` CLI itself; also scaffolding for future `[rust-bindings]` (FFI) support (GOALS.md, docs/deps/DESIGN.md §4) — no Gossamer project declares that yet.
 
 ## Deps-lock design
 
