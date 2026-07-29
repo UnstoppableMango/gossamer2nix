@@ -2,9 +2,7 @@
 .envrc
 .direnv/
 bin/
-.claude/*
-
-
-# Added by cargo
-
 /target
+.claude/*
+.vscode/*
+!.vscode/extensions.json
