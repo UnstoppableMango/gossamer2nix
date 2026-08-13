@@ -10,6 +10,8 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
+pub mod bin;
+
 #[derive(Debug, serde::Deserialize)]
 pub struct Manifest {
     #[allow(dead_code)]
