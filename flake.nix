@@ -63,8 +63,18 @@
             craneLib = inputs.crane.mkLib pkgs;
           };
 
+          src = pkgs.lib.fileset.toSource {
+            root = ./.;
+            fileset = pkgs.lib.fileset.unions [
+              (craneLib.fileset.commonCargoSources ./.)
+              ./tests/fixtures
+            ];
+          };
+
+          cargoArtifacts = craneLib.buildDepsOnly { inherit src; };
+
           gossamer2nix = craneLib.buildPackage {
-            src = craneLib.cleanCargoSource ./.;
+            inherit src cargoArtifacts;
           };
         in
         {
@@ -83,6 +93,7 @@
           checks = import ./nix/checks.nix {
             inherit (gossamerPkgs) buildGossamerApplication;
             inherit (pkgs) gossamer runCommand;
+            inherit craneLib src cargoArtifacts;
           };
 
           devShells.default = pkgs.mkShellNoCC {

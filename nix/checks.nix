@@ -2,6 +2,9 @@
   buildGossamerApplication,
   gossamer,
   runCommand,
+  craneLib,
+  src,
+  cargoArtifacts,
 }:
 
 {
@@ -11,5 +14,9 @@
     src = runCommand "gen-src" { } ''
       ${gossamer}/bin/gos new example.com/hello --path $out
     '';
+  };
+
+  gossamer2nix-tests = craneLib.cargoTest {
+    inherit cargoArtifacts src;
   };
 }
