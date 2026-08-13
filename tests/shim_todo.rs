@@ -1,8 +1,5 @@
 //! Call sites for the real shim (docs/deps/DESIGN.md §3.3), invoked as a
-//! subprocess against the compiled `gossamer2nix` binary rather than as a
-//! library call — no `generate` subcommand exists yet (`src/main.rs` is
-//! still an empty `clap::Parser` skeleton per CLAUDE.md), so these assert
-//! against an **assumed** CLI contract, not an implemented one:
+//! subprocess against the compiled `gossamer2nix` binary:
 //!
 //! ```text
 //! gossamer2nix generate --manifest-dir <before-dir> --out <out-dir>
@@ -15,11 +12,6 @@
 //! `after/` fixture tree (single `project.toml` for the single-dep
 //! scenarios; `root/project.toml` + `deps/linalg/project.toml` for the
 //! transitive scenario).
-//!
-//! Each test stays `#[ignore]`d: the binary has no `generate` subcommand
-//! today, so running these (`cargo test -- --ignored`) fails against
-//! today's skeleton, not a compile error. They exist to pin the intended
-//! contract so removing `#[ignore]` is a diff away once the CLI lands.
 
 #[path = "common/mod.rs"]
 mod common;
@@ -29,31 +21,26 @@ use common::bin::{assert_manifest_matches, fresh_out_dir, run_generate_shim};
 use std::path::Path;
 
 #[test]
-#[ignore = "shim not implemented; see docs/deps/DESIGN.md §3.3"]
 fn registry_dependency_gets_patched_by_real_shim() {
     run_single_dep_scenario("registry");
 }
 
 #[test]
-#[ignore = "shim not implemented; see docs/deps/DESIGN.md §3.3"]
 fn git_dependency_gets_patched_by_real_shim() {
     run_single_dep_scenario("git");
 }
 
 #[test]
-#[ignore = "shim not implemented; see docs/deps/DESIGN.md §3.3"]
 fn path_dependency_gets_repatched_by_real_shim() {
     run_single_dep_scenario("path_passthrough");
 }
 
 #[test]
-#[ignore = "shim not implemented; see docs/deps/DESIGN.md §3.3"]
 fn tarball_dependency_gets_patched_by_real_shim() {
     run_single_dep_scenario("tarball");
 }
 
 #[test]
-#[ignore = "shim not implemented; see docs/deps/DESIGN.md §3.3"]
 fn transitive_graph_gets_fully_patched_by_real_shim() {
     let out = fresh_out_dir("transitive");
 

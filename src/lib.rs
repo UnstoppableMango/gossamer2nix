@@ -1,3 +1,5 @@
+pub mod generate;
+
 #[derive(Debug, serde::Deserialize)]
 pub struct Manifest {
     pub project: ProjectMeta,
