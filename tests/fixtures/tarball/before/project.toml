@@ -1,0 +1,9 @@
+[project]
+id      = "example.com/math"
+version = "0.3.1"
+edition = "2026"
+authors = ["Jane Doe <jane@example.com>"]
+license = "Apache-2.0"
+
+[dependencies]
+"example.org/archive" = { url = "https://example.org/archive-1.0.0.tar.gz", sha256 = "3333333333333333333333333333333333333333333333333333333333333333" }

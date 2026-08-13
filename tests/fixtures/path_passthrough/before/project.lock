@@ -1,0 +1,6 @@
+# gossamer project.lock v1
+
+[[project]]
+id     = "example.net/internal"
+source = "path"
+path   = "../internal"

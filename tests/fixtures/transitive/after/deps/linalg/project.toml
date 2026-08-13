@@ -1,0 +1,14 @@
+# Expected output of the manifest-patching shim (docs/deps/DESIGN.md §3.3)
+# applied to ../../../before/deps/linalg/project.toml. Hand-authored spec.
+#
+# Proves the rewrite isn't root-manifest-only: every project.toml in the
+# transitive graph gets patched, including a dependency's own manifest.
+[project]
+id      = "example.org/linalg"
+version = "1.2.4"
+edition = "2026"
+authors = ["Linalg Maintainers <linalg@example.org>"]
+license = "MIT"
+
+[dependencies]
+"example.org/blas" = { path = "/nix/store/00000000000000000000000000000000-blas" }

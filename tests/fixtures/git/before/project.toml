@@ -1,0 +1,9 @@
+[project]
+id      = "example.com/math"
+version = "0.3.1"
+edition = "2026"
+authors = ["Jane Doe <jane@example.com>"]
+license = "Apache-2.0"
+
+[dependencies]
+"example.com/logging" = { git = "https://git.example.com/logging.git", tag = "v0.8.0" }

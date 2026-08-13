@@ -1,0 +1,12 @@
+[project]
+id      = "example.com/math"
+version = "0.3.1"
+edition = "2026"
+authors = ["Jane Doe <jane@example.com>"]
+license = "Apache-2.0"
+
+[dependencies]
+"example.org/linalg" = "1.2"
+
+[registries]
+"example.org" = "https://registry.example.org/v1"

@@ -1,0 +1,12 @@
+# gossamer project.lock v1
+#
+# Note: the lockfile field for tarball deps is `tarball_sha256`, distinct
+# from the manifest-level `sha256` field used in project.toml's `url` dep
+# table above. This naming difference is real (docs/DEPS.md §3 vs §7), kept
+# as-is rather than "fixed" here.
+
+[[project]]
+id             = "example.org/archive"
+source         = "tarball"
+url            = "https://example.org/archive-1.0.0.tar.gz"
+tarball_sha256 = "3333333333333333333333333333333333333333333333333333333333333333"

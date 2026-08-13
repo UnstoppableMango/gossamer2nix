@@ -1,0 +1,10 @@
+# linalg's own manifest, as it exists inside its fetched source tree.
+[project]
+id      = "example.org/linalg"
+version = "1.2.4"
+edition = "2026"
+authors = ["Linalg Maintainers <linalg@example.org>"]
+license = "MIT"
+
+[dependencies]
+"example.org/blas" = { git = "https://git.example.org/blas.git", tag = "v2.0.0" }

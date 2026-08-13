@@ -1,0 +1,19 @@
+# gossamer project.lock v1
+#
+# Full transitive entry list: root's direct dep (linalg) plus linalg's own
+# direct dep (blas), per docs/deps/DESIGN.md §3.3 step 1 ("walk
+# project.lock's full transitive entry list").
+
+[[project]]
+id           = "example.org/linalg"
+source       = "registry"
+version      = "1.2.4"
+sha256       = "1111111111111111111111111111111111111111111111111111111111111111"
+owner_pubkey = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+[[project]]
+id     = "example.org/blas"
+source = "git"
+url    = "https://git.example.org/blas.git"
+ref    = "v2.0.0"
+sha256 = "4444444444444444444444444444444444444444444444444444444444444444"

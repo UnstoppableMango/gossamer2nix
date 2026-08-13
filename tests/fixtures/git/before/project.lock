@@ -1,0 +1,8 @@
+# gossamer project.lock v1
+
+[[project]]
+id     = "example.com/logging"
+source = "git"
+url    = "https://git.example.com/logging.git"
+ref    = "v0.8.0"
+sha256 = "2222222222222222222222222222222222222222222222222222222222222222"

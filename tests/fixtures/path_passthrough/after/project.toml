@@ -1,0 +1,17 @@
+# Expected output of the manifest-patching shim (docs/deps/DESIGN.md §3.3)
+# applied to ../before/project.toml. Hand-authored spec, not generated.
+#
+# Even a dependency that was ALREADY a `path` kind gets its value rewritten:
+# the shim normalizes every dependency (any original kind) to an absolute
+# Nix store path, so relative `path = "../internal"` becomes an absolute
+# `path = "/nix/store/..."`. This is a project decision (see plan), not
+# something DESIGN.md states explicitly.
+[project]
+id      = "example.com/math"
+version = "0.3.1"
+edition = "2026"
+authors = ["Jane Doe <jane@example.com>"]
+license = "Apache-2.0"
+
+[dependencies]
+"example.net/internal" = { path = "/nix/store/00000000000000000000000000000000-internal" }
