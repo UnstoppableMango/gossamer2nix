@@ -55,10 +55,10 @@ fn path_passthrough_lock_path_differs_from_patched_path() {
     let (id, after_value) = after.dependencies.iter().next().unwrap();
     assert_eq!(lock_entry_source(&lock, id), "path");
 
-    let lock_path = common::lock_entry(&lock, id)
-        .get("path")
-        .and_then(|v| v.as_str())
-        .expect("path-kind lock entry must record its own `path` field");
+    let lock_path = match &common::lock_entry(&lock, id).source {
+        common::LockSource::Path { path } => path.as_str(),
+        other => panic!("path-kind lock entry must record its own `path` field, got {other:?}"),
+    };
     let after_path = as_single_key_path(after_value).expect("expected patched path table");
 
     assert_ne!(

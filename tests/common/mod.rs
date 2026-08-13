@@ -1,28 +1,18 @@
 //! Shared fixture-parsing helpers for the shim spec tests.
 //!
-//! No real `DependencySpec` type exists yet (the shim isn't implemented),
-//! so dependency values are parsed as untyped `toml::Value` rather than a
-//! typed enum. Keeping helpers parameterized over a parsed `Manifest`/
-//! `Lockfile` (not a fixture path) means a future test can feed a real
-//! shim's output through these same assertions with minimal rewrite.
+//! `Manifest`/`Lockfile` live in the `gossamer2nix` lib crate so tests and
+//! the future shim implementation deserialize against the same types.
+//! Keeping helpers parameterized over a parsed `Manifest`/`Lockfile` (not a
+//! fixture path) means a future test can feed a real shim's output through
+//! these same assertions with minimal rewrite.
 
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
+pub use gossamer2nix::{DependencySpec, LockEntry, LockSource, Lockfile, Manifest, ProjectMeta};
+
 pub mod bin;
-
-#[derive(Debug, serde::Deserialize)]
-pub struct Manifest {
-    #[allow(dead_code)]
-    pub project: toml::Value,
-    pub dependencies: std::collections::BTreeMap<String, toml::Value>,
-}
-
-#[derive(Debug, serde::Deserialize)]
-pub struct Lockfile {
-    pub project: Vec<toml::Value>,
-}
 
 pub fn load_manifest(path: impl AsRef<Path>) -> Manifest {
     let text = fs::read_to_string(path.as_ref())
@@ -40,29 +30,24 @@ pub fn dep_ids(m: &Manifest) -> BTreeSet<String> {
     m.dependencies.keys().cloned().collect()
 }
 
-/// `Some(path)` only if `value` is a table with exactly one key, `"path"`,
-/// whose value is a string. This is the shape every dependency entry must
-/// take after the shim patches a manifest.
-pub fn as_single_key_path(value: &toml::Value) -> Option<&str> {
-    let table = value.as_table()?;
-    if table.len() != 1 {
-        return None;
+/// `Some(path)` only if `value` is `DependencySpec::Path`. This is the shape
+/// every dependency entry must take after the shim patches a manifest.
+pub fn as_single_key_path(value: &DependencySpec) -> Option<&str> {
+    match value {
+        DependencySpec::Path { path } => Some(path.as_str()),
+        _ => None,
     }
-    table.get("path")?.as_str()
 }
 
-pub fn lock_entry<'a>(lock: &'a Lockfile, id: &str) -> &'a toml::Value {
+pub fn lock_entry<'a>(lock: &'a Lockfile, id: &str) -> &'a LockEntry {
     lock.project
         .iter()
-        .find(|entry| entry.get("id").and_then(|v| v.as_str()) == Some(id))
+        .find(|entry| entry.id == id)
         .unwrap_or_else(|| panic!("no lock entry for id {id}"))
 }
 
-pub fn lock_entry_source<'a>(lock: &'a Lockfile, id: &str) -> &'a str {
-    lock_entry(lock, id)
-        .get("source")
-        .and_then(|v| v.as_str())
-        .unwrap_or_else(|| panic!("lock entry {id} missing `source`"))
+pub fn lock_entry_source(lock: &Lockfile, id: &str) -> &'static str {
+    lock_entry(lock, id).source.kind()
 }
 
 pub struct Scenario {
