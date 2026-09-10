@@ -1,0 +1,8 @@
+/result*
+.envrc
+.direnv/
+bin/
+/target
+.claude/*
+.vscode/*
+!.vscode/extensions.json
