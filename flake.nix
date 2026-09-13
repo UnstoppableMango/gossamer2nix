@@ -14,7 +14,7 @@
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
-    systems.url = "github:nix-systems/triplet";
+    systems.url = "github:UnstoppableMango/nix-systems";
     crane.url = "github:ipetkov/crane";
 
     mangopkgs = {
@@ -45,7 +45,10 @@
     inputs@{ flake-parts, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = import inputs.systems;
-      imports = [ inputs.treefmt-nix.flakeModule ];
+      imports = [
+        inputs.systems.flakeModule
+        inputs.treefmt-nix.flakeModule
+      ];
 
       perSystem =
         {
