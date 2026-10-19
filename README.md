@@ -1,5 +1,7 @@
 # gossamer2nix
 
+[![Hercules CI](https://hercules-ci.com/api/v1/site/github/account/UnstoppableMango/project/gossamer2nix/badge)](https://hercules-ci.com/github/UnstoppableMango/gossamer2nix)
+
 Nix builder for [Gossamer](https://github.com/danpozmanter/gossamer).
 Nix-native dependency conversion + reproducible builds, in the spirit of [gomod2nix](https://github.com/nix-community/gomod2nix).
 
